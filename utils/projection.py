@@ -167,6 +167,7 @@ def warp_dense(h: int, w: int, params: dict):
     pts_x = torch.range(1/w/2, 1 - 1/w/2, 1/w)
     pts_y = torch.range(1/h/2, 1 - 1/h/2, 1/h)
     pts = torch.stack(torch.meshgrid(pts_y, pts_x), dim=-1).reshape(-1, 2)[..., [1, 0]]
+    pts = pts.to(params['depth0'].device)
     if mode == 'homo':
         kps0_valid, kps01_valid, ids01, _ = warp_homography(pts, params)
     elif mode == 'se3':
@@ -197,7 +198,7 @@ def warp_se3(kpts0, params):
     depth1 = params['depth1']
     intrinsics0 = params['intrinsics0']
     intrinsics1 = params['intrinsics1']
-    kpts0 = kpts0 * torch.from_numpy(np.array([depth0.shape[1], depth0.shape[0]])).to(torch.float32)
+    kpts0 = kpts0 * torch.from_numpy(np.array([depth0.shape[1], depth0.shape[0]])).to(torch.float32).to(kpts0.device)
 
     # kpts0_valid: valid kpts0
     # z0_valid: depth of valid kpts0
@@ -259,12 +260,13 @@ def warp_se3(kpts0, params):
     # kpts0_valid: valid keypoints0, the invalid and inconsistance keypoints are removed
     # kpts01_valid: the warped valid keypoints0
     # ids: the valid indices
-    kpts0_valid = kpts0_valid / torch.from_numpy(np.array([depth0.shape[1], depth0.shape[0]])).to(torch.float32)
-    kpts01_valid = kpts01_valid / torch.from_numpy(np.array([depth1.shape[1], depth1.shape[0]])).to(torch.float32)
+    kpts0_valid = kpts0_valid / torch.from_numpy(np.array([depth0.shape[1], depth0.shape[0]])).to(torch.float32).to(kpts0.device)
+    kpts01_valid = kpts01_valid / torch.from_numpy(np.array([depth1.shape[1], depth1.shape[0]])).to(torch.float32).to(kpts0.device)
     return kpts0_valid, kpts01_valid, ids_valid, ids_out
 
 
 def interpolate_depth(pos, depth):
+    border = 10
     pos = pos.t()[[1, 0]]  # Nx2 -> 2xN; w,h -> h,w(i,j)
 
     # =============================================== from d2-net
@@ -280,19 +282,19 @@ def interpolate_depth(pos, depth):
     # Valid corners
     i_top_left = torch.floor(i).long()
     j_top_left = torch.floor(j).long()
-    valid_top_left = torch.min(i_top_left >= 0, j_top_left >= 0)
+    valid_top_left = torch.min(i_top_left >= border, j_top_left >= border)
 
     i_top_right = torch.floor(i).long()
     j_top_right = torch.ceil(j).long()
-    valid_top_right = torch.min(i_top_right >= 0, j_top_right < w)
+    valid_top_right = torch.min(i_top_right >= border, j_top_right < w-border)
 
     i_bottom_left = torch.ceil(i).long()
     j_bottom_left = torch.floor(j).long()
-    valid_bottom_left = torch.min(i_bottom_left < h, j_bottom_left >= 0)
+    valid_bottom_left = torch.min(i_bottom_left < h - border, j_bottom_left >= border)
 
     i_bottom_right = torch.ceil(i).long()
     j_bottom_right = torch.ceil(j).long()
-    valid_bottom_right = torch.min(i_bottom_right < h, j_bottom_right < w)
+    valid_bottom_right = torch.min(i_bottom_right < h - border, j_bottom_right < w - border)
 
     valid_corners = torch.min(torch.min(valid_top_left, valid_top_right),
                               torch.min(valid_bottom_left, valid_bottom_right))

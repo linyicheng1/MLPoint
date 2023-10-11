@@ -20,8 +20,8 @@ class MegaDepthDataset(Dataset):
     def __init__(
             self,
             root='../data/megadepth',
-            train=True,
-            using_cache=True,
+            train: bool = True,
+            using_cache: bool = True,
             pairs_per_scene=100,
             image_size=512,
             colorjit=True,

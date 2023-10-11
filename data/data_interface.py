@@ -2,41 +2,37 @@ import inspect
 import importlib
 import pickle as pkl
 import pytorch_lightning as pl
+import torch.nn
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import WeightedRandomSampler
+from pytorch_lightning import LightningDataModule
+from .hpatches import HPatchesDataset
+from .megadepth import MegaDepthDataset
 
 
-class DInterface(pl.LightningDataModule):
+class DInterface(LightningDataModule):
 
-    def __init__(self, num_workers=8,
-                 dataset='',
-                 **kwargs):
+    def __init__(self, params):
         super().__init__()
-        self.num_workers = num_workers
-        self.dataset = dataset
-        self.kwargs = kwargs
-        self.batch_size = kwargs['batch_size']
-        self.load_data_module()
+        self.num_workers = params['num_workers']
+        self.batch_size = params['batch_size']
+        if 'train_dataset' in params:
+            self.trainset_param = params['train_dataset']
+        if 'val_dataset' in params:
+            self.valset_param = params['val_dataset']
+        if 'test_dataset' in params:
+            self.testset_param = params['test_dataset']
+
 
     def setup(self, stage=None):
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
-            self.trainset = self.instancialize(train=True)
-            self.valset = self.instancialize(train=False)
+            self.trainset = self.instancialize(self.trainset_param, train=True)
+            self.valset = self.instancialize(self.valset_param, train=False)
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
-            self.testset = self.instancialize(train=False)
-
-        # # If you need to balance your data using Pytorch Sampler,
-        # # please uncomment the following lines.
-
-        # with open('./data/ref/samples_weight.pkl', 'rb') as f:
-        #     self.sample_weight = pkl.load(f)
-
-    # def train_dataloader(self):
-    #     sampler = WeightedRandomSampler(self.sample_weight, len(self.trainset)*20)
-    #     return DataLoader(self.trainset, batch_size=self.batch_size, num_workers=self.num_workers, sampler = sampler)
+            self.testset = self.instancialize(self.testset_param, train=False)
 
     def train_dataloader(self):
         return DataLoader(self.trainset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
@@ -47,30 +43,19 @@ class DInterface(pl.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(self.testset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False)
 
-    def load_data_module(self):
-        name = self.dataset
-        # Change the `snake_case.py` file name to `CamelCase` class name.
-        # Please always name your model file name as `snake_case.py` and
-        # class name corresponding `CamelCase`.
-        camel_name = ''.join([i.capitalize() for i in name.split('_')])
-        try:
-            self.data_module = getattr(importlib.import_module(
-                '.' + name, package=__package__), camel_name)
-        except:
-            raise ValueError(
-                f'Invalid Dataset File Name or Invalid Class Name data.{name}.{camel_name}')
-
-    def instancialize(self, **other_args):
+    def instancialize(self, params, train=True):
         """ Instancialize a model using the corresponding parameters
             from self.hparams dictionary. You can also input any args
             to overwrite the corresponding value in self.kwargs.
         """
-        class_args = inspect.getargspec(self.data_module.__init__).args[1:]
-        inkeys = self.kwargs.keys()
-        args1 = {}
-        for arg in class_args:
-            if arg in inkeys:
-                args1[arg] = self.kwargs[arg]
-        args1.update(other_args)
-        return self.data_module(**args1)
+        if params['type'] == 'hpatches':
+            return HPatchesDataset(params['root'], params['alteration'])
+        elif params['type'] == 'megadepth':
+            return MegaDepthDataset(params['root'], train, params['using_cache'],
+                                    params['pairs_per_scene'], params['image_size'],
+                                    params['colorjit'], params['gray'],
+                                    params['crop_or_scale'])
+        else:
+            raise ValueError('Invalid dataset type')
+
 

@@ -128,7 +128,7 @@ def prob_map_to_positions_with_prob(
         for i in range(prob_map.shape[0])
     )
     positions_with_prob = tuple(
-        torch.cat((pos / torch.from_numpy(np.array([prob_map.shape[1], prob_map.shape[2]])), prob), dim=1) for pos, prob in zip(positions, prob)
+        torch.cat((pos / torch.from_numpy(np.array([prob_map.shape[1], prob_map.shape[2]])).to(positions[0].device), prob), dim=1) for pos, prob in zip(positions, prob)
     )
     return positions_with_prob[0][..., [1, 0, 2]]
 

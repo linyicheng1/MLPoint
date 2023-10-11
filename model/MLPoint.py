@@ -109,3 +109,15 @@ class ML_Point(nn.Module):
         x2_up = F.interpolate(x2_up, scale_factor=8, mode='bilinear', align_corners=True)
         desc = torch.cat([x2_up, x1], dim=1)
         return scores_map, x1, x2, x3, desc
+
+
+if __name__ == '__main__':
+    model = ML_Point()
+    x = torch.randn(1, 3, 512, 512)
+    score, x1, x2, x3, desc = model(x)
+    print(score.shape)
+    print(x1.shape)
+    print(x2.shape)
+    print(x3.shape)
+    print(desc.shape)
+

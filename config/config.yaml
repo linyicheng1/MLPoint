@@ -1,0 +1,40 @@
+# config.yaml
+fit:
+    trainer:
+        max_steps: 100
+        devices: 1
+    data:
+        params:
+            batch_size: 1
+            num_workers: 8
+            train_dataset:
+                type: megadepth
+                root: /media/server/4cda377d-28db-4424-921c-6a1e0545ceeb/Dataset/disk-data/megadepth
+                using_cache: True
+                pairs_per_scene: 100
+                image_size: 512
+                colorjit: True
+                gray: False
+                crop_or_scale: 'scale'
+            val_dataset:
+                type: hpatches
+                root: /media/server/4cda377d-28db-4424-921c-6a1e0545ceeb/WangShuo/datasets/HPatch
+                alteration: all
+    model:
+        params:
+            pretrained: False
+            weight: /
+            loss:
+                projection_loss_weight: 1.0
+                local_consistency_loss_weight: 1.0
+                dense_matching_loss_weight: 1.0
+            weight_decay: 1e-5
+            lr: 1e-3
+            lr_scheduler:
+                type: step
+                step_size: 10
+                gamma: 0.1
+
+test:
+    trainer:
+        max_epochs: 10

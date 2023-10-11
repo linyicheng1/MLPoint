@@ -1,110 +1,119 @@
 import inspect
 import torch
 import importlib
+from torch import Tensor
 from torch.nn import functional as F
 import torch.optim.lr_scheduler as lrs
-
 import pytorch_lightning as pl
+from pytorch_lightning.utilities.types import STEP_OUTPUT
+from .MLPoint import ML_Point
+import utils
+from model.losses import match_loss, projection_loss, local_loss
 
 
 class MInterface(pl.LightningModule):
-    def __init__(self, model_name, loss, lr, **kargs):
+    def __init__(self, params) -> None:
         super().__init__()
-        self.save_hyperparameters()
-        self.load_model()
-        self.configure_loss()
+        self.params = params
+        self.model = ML_Point()
+        self.model = self.model.to(self.device)
+        if params['pretrained']:
+            self.model.load_state_dict(torch.load(params['weight']))
 
-    def forward(self, img):
+    def forward(self, img: Tensor):
         return self.model(img)
 
-    def training_step(self, batch, batch_idx):
-        img, labels, filename = batch
-        out = self(img)
-        loss = self.loss_function(out, labels)
-        self.log('loss', loss, on_step=True, on_epoch=True, prog_bar=True)
-        return loss
+    def loss(self, scores_map_0: Tensor, scores_map_1: Tensor,
+             desc_map_00: Tensor, desc_map_01: Tensor,
+             desc_map_10: Tensor, desc_map_11: Tensor,
+             desc_map_20: Tensor, desc_map_21: Tensor, batch) -> Tensor:
 
-    def validation_step(self, batch, batch_idx):
-        img, labels, filename = batch
-        out = self(img)
-        loss = self.loss_function(out, labels)
-        label_digit = labels.argmax(axis=1)
-        out_digit = out.argmax(axis=1)
+        # 1. gt values
+        # warp
+        warp01_params = {}
+        for k, v in batch['warp01_params'].items():
+            warp01_params[k] = v[0]
+        warp10_params = {}
+        for k, v in batch['warp10_params'].items():
+            warp10_params[k] = v[0]
+        dense_matches_01 = utils.warp_dense(8, 8, warp01_params)
+        dense_matches_10 = utils.warp_dense(8, 8, warp10_params)
 
-        correct_num = sum(label_digit == out_digit).cpu().item()
+        # 2. detection and description
+        kps_0 = utils.detection(scores_map_0.detach(), nms_dist=8, threshold=0.1)
+        kps_1 = utils.detection(scores_map_1.detach(), nms_dist=8, threshold=0.1)
+        # kps
+        kps0_valid, kps01_valid, ids01, _ = utils.warp(kps_0, warp01_params)
+        kps1_valid, kps10_valid, ids10, _ = utils.warp(kps_1, warp10_params)
 
-        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log('val_acc', correct_num/len(out_digit),
-                 on_step=False, on_epoch=True, prog_bar=True)
+        # desc
+        sample_pts_0 = kps0_valid * 2. - 1.
+        sample_pts_1 = kps1_valid * 2. - 1.
+        desc_00 = F.grid_sample(desc_map_00, sample_pts_0.unsqueeze(0).unsqueeze(0),
+                                mode='bilinear', align_corners=True, padding_mode='zeros')
+        desc_01 = F.grid_sample(desc_map_01, sample_pts_1.unsqueeze(0).unsqueeze(0),
+                                mode='bilinear', align_corners=True, padding_mode='zeros')
+        desc_10 = F.grid_sample(desc_map_10, sample_pts_0.unsqueeze(0).unsqueeze(0),
+                                mode='bilinear', align_corners=True, padding_mode='zeros')
+        desc_11 = F.grid_sample(desc_map_11, sample_pts_1.unsqueeze(0).unsqueeze(0),
+                                mode='bilinear', align_corners=True, padding_mode='zeros')
+        score0 = F.grid_sample(scores_map_0, sample_pts_0.unsqueeze(0).unsqueeze(0),
+                                mode='bilinear', align_corners=True, padding_mode='zeros')
+        score1 = F.grid_sample(scores_map_1, sample_pts_1.unsqueeze(0).unsqueeze(0),
+                                mode='bilinear', align_corners=True, padding_mode='zeros')
+        # 3. loss
+        # 3.1 projection loss
 
-        return (correct_num, len(out_digit))
+        loss_kps_0 = projection_loss(kps01_valid.unsqueeze(0), score0.view(1, -1, 1), scores_map_1, 8)
+        loss_kps_1 = projection_loss(kps10_valid.unsqueeze(0), score1.view(1, -1, 1), scores_map_0, 8)
 
-    def test_step(self, batch, batch_idx):
-        # Here we just reuse the validation_step for testing
-        return self.validation_step(batch, batch_idx)
+        # 3.2 local consistency loss
+        loss_desc_00 = local_loss(desc_00.squeeze(2), desc_map_01, kps01_valid.unsqueeze(0), win_size=8)
+        loss_desc_01 = local_loss(desc_01.squeeze(2), desc_map_00, kps10_valid.unsqueeze(0), win_size=8)
+        loss_desc_10 = local_loss(desc_10.squeeze(2), desc_map_11, kps01_valid.unsqueeze(0), win_size=8)
+        loss_desc_11 = local_loss(desc_11.squeeze(2), desc_map_10, kps10_valid.unsqueeze(0), win_size=8)
 
-    def on_validation_epoch_end(self):
-        # Make the Progress Bar leave there
-        self.print('')
+        # 3.3 dense match loss
+        loss_match_01, indices00, indices01 = match_loss(desc_map_20, desc_map_21, dense_matches_01.unsqueeze(0))
+        loss_match_10, indices10, indices11 = match_loss(desc_map_21, desc_map_20, dense_matches_10.unsqueeze(0))
+
+        # 3.4 total loss
+        proj_weight = self.params['loss']['projection_loss_weight']
+        cons_weight = self.params['loss']['local_consistency_loss_weight']
+        match_weight = self.params['loss']['dense_matching_loss_weight']
+        return proj_weight * (loss_kps_0 + loss_kps_1) + \
+               cons_weight * (loss_desc_00 + loss_desc_01 + loss_desc_10 + loss_desc_11) + \
+               match_weight * (loss_match_01 + loss_match_10)
+
+    def step(self, batch: Tensor) -> Tensor:
+        result0 = self(batch['image0'])
+        result1 = self(batch['image1'])
+        return self.loss(result0[0], result1[0], result0[1], result1[1],
+                         result0[2], result1[2], result0[3], result1[3],
+                         batch)
+
+    def training_step(self, batch: Tensor, batch_idx: int) -> STEP_OUTPUT:
+        return {"loss": self.step(batch)}
 
     def configure_optimizers(self):
-        if hasattr(self.hparams, 'weight_decay'):
-            weight_decay = self.hparams.weight_decay
+        if 'weight_decay' in self.params:
+            weight_decay = self.params['weight_decay']
         else:
             weight_decay = 0
         optimizer = torch.optim.Adam(
-            self.parameters(), lr=self.hparams.lr, weight_decay=weight_decay)
+            self.parameters(), lr=self.params['lr'], weight_decay=weight_decay)
 
-        if self.hparams.lr_scheduler is None:
+        if 'lr_scheduler' not in self.params:
             return optimizer
         else:
-            if self.hparams.lr_scheduler == 'step':
+            if self.params['lr_scheduler']['type'] == 'step':
                 scheduler = lrs.StepLR(optimizer,
-                                       step_size=self.hparams.lr_decay_steps,
-                                       gamma=self.hparams.lr_decay_rate)
-            elif self.hparams.lr_scheduler == 'cosine':
+                                       step_size=self.params['lr_scheduler']['step_size'],
+                                       gamma=self.params['lr_scheduler']['gamma'])
+            elif self.params['lr_scheduler']['type'] == 'cosine':
                 scheduler = lrs.CosineAnnealingLR(optimizer,
-                                                  T_max=self.hparams.lr_decay_steps,
-                                                  eta_min=self.hparams.lr_decay_min_lr)
+                                                  T_max=self.params['lr_scheduler']['lr_decay_steps'],
+                                                  eta_min=self.params['lr_scheduler']['lr_decay_min_lr'])
             else:
                 raise ValueError('Invalid lr_scheduler type!')
             return [optimizer], [scheduler]
-
-    def configure_loss(self):
-        loss = self.hparams.loss.lower()
-        if loss == 'mse':
-            self.loss_function = F.mse_loss
-        elif loss == 'l1':
-            self.loss_function = F.l1_loss
-        elif loss == 'bce':
-            self.loss_function = F.binary_cross_entropy
-        else:
-            raise ValueError("Invalid Loss Type!")
-
-    def load_model(self):
-        name = self.hparams.model_name
-        # Change the `snake_case.py` file name to `CamelCase` class name.
-        # Please always name your model file name as `snake_case.py` and
-        # class name corresponding `CamelCase`.
-        camel_name = ''.join([i.capitalize() for i in name.split('_')])
-        try:
-            Model = getattr(importlib.import_module(
-                '.'+name, package=__package__), camel_name)
-        except:
-            raise ValueError(
-                f'Invalid Module File Name or Invalid Class Name {name}.{camel_name}!')
-        self.model = self.instancialize(Model)
-
-    def instancialize(self, Model, **other_args):
-        """ Instancialize a model using the corresponding parameters
-            from self.hparams dictionary. You can also input any args
-            to overwrite the corresponding value in self.hparams.
-        """
-        class_args = inspect.getargspec(Model.__init__).args[1:]
-        inkeys = self.hparams.keys()
-        args1 = {}
-        for arg in class_args:
-            if arg in inkeys:
-                args1[arg] = getattr(self.hparams, arg)
-        args1.update(other_args)
-        return Model(**args1)

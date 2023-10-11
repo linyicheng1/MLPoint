@@ -17,9 +17,9 @@ def log_optimal_transport(scores, alpha, iters: int):
     one = scores.new_tensor(1)
     ms, ns = (m*one).to(scores), (n*one).to(scores)
 
-    bins0 = alpha.expand(b, m, 1)
-    bins1 = alpha.expand(b, 1, n)
-    alpha = alpha.expand(b, 1, 1)
+    bins0 = alpha.expand(b, m, 1).to(scores.device)
+    bins1 = alpha.expand(b, 1, n).to(scores.device)
+    alpha = alpha.expand(b, 1, 1).to(scores.device)
 
     couplings = torch.cat([torch.cat([scores, bins0], -1),
                            torch.cat([bins1, alpha], -1)], 1)
@@ -46,8 +46,8 @@ def match_loss(desc0, desc1, all_matches, dim=4):
     :param dim: int
     :return:
     """
-    desc0 = desc0.view(1, 256, -1)
-    desc1 = desc1.view(1, 256, -1)
+    desc0 = desc0.view(1, desc0.shape[1], -1)
+    desc1 = desc1.view(1, desc0.shape[1], -1)
     scores = torch.einsum('bdn,bdm->bnm', desc0, desc1)
     # normalize
     dim = desc0.shape[1]
@@ -81,10 +81,11 @@ def match_loss(desc0, desc1, all_matches, dim=4):
     return loss_mean[0], indices0, indices1
 
 
-def projection_loss(pts01, pts1_map, win_size=2):
+def projection_loss(pts01, score, pts1_map, win_size=2):
     """
     :param pts01: (B, N, 3) (x, y, score)
     :param pts1_map: (B, 1, H, W)
+    :param score: (B, N, 1)
     :param win_size: int
     :return: loss
     """
@@ -92,13 +93,13 @@ def projection_loss(pts01, pts1_map, win_size=2):
     _, _, H, W = pts1_map.shape
     sample_pts = pts01[:, :, 0:2] * 2. - 1.
     score1 = F.grid_sample(pts1_map, sample_pts.unsqueeze(1), mode='bilinear', align_corners=True, padding_mode='zeros')
-    loss = (2 - torch.mean(torch.pow(pts01[:, :, 2], 2)) - torch.mean(torch.pow(score1, 2)))
-    mask = torch.ones(2*win_size+2, 2*win_size+2)
+    loss = (2 - torch.mean(torch.pow(score, 2)) - torch.mean(torch.pow(score1, 2)))
+    mask = torch.ones(2*win_size+2, 2*win_size+2).to(pts01.device)
     mask[win_size:win_size+2, win_size:win_size+2] = 0
     for b in range(B):
         for n in range(N):
             # (x, y) in desc1 map
-            x, y, s = pts01[b, n, 0], pts01[b, n, 1], pts01[b, n, 2]
+            x, y, s = pts01[b, n, 0], pts01[b, n, 1], score[b, n, 0]
             x0 = int(x * W)
             y0 = int(y * H)
             x1 = x0 + 1
