@@ -60,15 +60,18 @@ class ResBlock(nn.Module):
 
 
 class ML_Point(nn.Module):
-    def __init__(self):
+    def __init__(self, params):
         super().__init__()
+        c0 = params['c0']
+        c1 = params['c1']
+        c2 = params['c2']
         self.gate = nn.ReLU(inplace=True)
         # first layer
-        self.res1 = ResBlock(3, 8, 1, downsample=nn.Conv2d(3, 8, 1), gate=self.gate)
-        self.conv1 = resnet.conv1x1(8, 16)
-        self.conv_head1 = resnet.conv1x1(16, 4)
+        self.res1 = ResBlock(c0, c1, 1, downsample=nn.Conv2d(c0, c1, 1), gate=self.gate)
+        self.conv1 = resnet.conv1x1(c1, c2)
+        self.conv_head1 = resnet.conv1x1(c2, 4)
         # second layer
-        self.res2 = ResBlock(8, 16, stride=2, downsample=nn.Conv2d(8, 16, 1, stride=2), gate=self.gate)
+        self.res2 = ResBlock(c1, 16, stride=2, downsample=nn.Conv2d(c1, 16, 1, stride=2), gate=self.gate)
         self.conv2 = resnet.conv1x1(16, 32)
         self.conv_head2 = resnet.conv1x1(32, 16)
         # third layer
@@ -107,8 +110,8 @@ class ML_Point(nn.Module):
         x3_up = F.interpolate(x3, scale_factor=8, mode='bilinear', align_corners=True)
         x2_up = torch.cat([x3_up, x2], dim=1)
         x2_up = F.interpolate(x2_up, scale_factor=8, mode='bilinear', align_corners=True)
-        desc = torch.cat([x2_up, x1], dim=1)
-        return scores_map, x1, x2, x3, desc
+        desc = x2_up #  torch.cat([x2_up, x1], dim=1)
+        return scores_map / torch.norm(scores_map) * 300, x1, x2, x3, desc
 
 
 if __name__ == '__main__':

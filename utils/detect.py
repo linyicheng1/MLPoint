@@ -165,16 +165,20 @@ def remove_border_points(image_nms: torch.Tensor, border_dist: int = 4) -> torch
 def detection(score_map: torch.Tensor,
            nms_dist: int = 4,
            threshold: float = 0.0,
-           border_dist: int = 8):
+           border_dist: int = 8,
+           max_pts: int = 300):
     """
     :param score_map: Tensor of shape Bx1xHxW
     :param nms_dist:  The minimum distance between two predicted corners after NMS, by default 4
     :param threshold: Threshold used to discard positions with low probability, by default 0.0
     :param border_dist: the distance from the border to remove points
+    :param max_pts: Maximum number of points to return
     :return: Tensor of shape BxNx3 (x, y and prob)
     """
     fast_nms_score_map = fast_nms(score_map, nms_dist=nms_dist)
     fast_nms_score_map = remove_border_points(fast_nms_score_map, border_dist=border_dist)
     pts = prob_map_to_positions_with_prob(fast_nms_score_map, threshold=threshold)
+    if pts.shape[0] > max_pts:
+        pts = pts[torch.argsort(pts[:, 2], descending=True)[:max_pts]]
     return pts
 

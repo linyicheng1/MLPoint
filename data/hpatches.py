@@ -4,10 +4,15 @@ import glob
 from pathlib import Path
 import matplotlib.pyplot as plt
 import cv2
+from utils.projection import scale_intrinsics
 
 
 class HPatchesDataset(data.Dataset):
-    def __init__(self, root: str = '../data/hpatches', alteration: str = 'all'):
+    def __init__(self,
+                 root: str = '../data/hpatches',
+                 alteration: str = 'all',
+                 image_size: int = 512,
+                 gray: bool = False):
         """
         Args:
             root: dataset root path
@@ -15,7 +20,8 @@ class HPatchesDataset(data.Dataset):
         """
         assert (Path(root).exists()), f"Dataset root path {root} dose not exist!"
         self.root = root
-
+        self.image_size = image_size
+        self.gray = gray
         # get all image file name
         self.image0_list = []
         self.image1_list = []
@@ -46,24 +52,35 @@ class HPatchesDataset(data.Dataset):
         img1 = cv2.imread(self.image1_list[item])
         assert img0 is not None, 'can not load: ' + self.image0_list[item]
         assert img1 is not None, 'can not load: ' + self.image1_list[item]
-
-        # bgr -> rgb
-        img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2RGB).astype('float32') / 255.  # HxWxC
-        img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2RGB).astype('float32') / 255.  # HxWxC
+        if self.gray:
+            img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY).astype('float32') / 255.  # HxWx1
+            img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY).astype('float32') / 255.  # HxWx1
+            img0 = np.expand_dims(img0, axis=2)
+            img1 = np.expand_dims(img1, axis=2)
+        else:
+            # bgr -> rgb
+            img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2RGB).astype('float32') / 255.  # HxWxC
+            img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2RGB).astype('float32') / 255.  # HxWxC
 
         h0, w0, _ = img0.shape
         h1, w1, _ = img1.shape
-
+        # resize image
+        img0 = cv2.resize(img0, (self.image_size, self.image_size))
+        img1 = cv2.resize(img1, (self.image_size, self.image_size))
         # read homography
         homography = np.loadtxt(self.homographies[item]).astype('float32')
-
+        if self.gray:
+            img0 = np.expand_dims(img0, axis=2)
+            img1 = np.expand_dims(img1, axis=2)
         # pack return dict
         return {'image0': img0.transpose(2, 0, 1),  # [C,H,W]
                 'image1': img1.transpose(2, 0, 1),  # [C,H,W]
                 'warp01_params': {'mode': 'homo', 'width': w1, 'height': h1,
-                                  'homography_matrix': homography, },
+                                  'homography_matrix': homography,
+                                  'resize': self.image_size},
                 'warp10_params': {'mode': 'homo', 'width': w0, 'height': h0,
-                                  'homography_matrix': np.linalg.inv(homography), }
+                                  'homography_matrix': np.linalg.inv(homography),
+                                  'resize': self.image_size}
                 }
 
     def __len__(self):

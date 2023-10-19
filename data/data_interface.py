@@ -23,7 +23,6 @@ class DInterface(LightningDataModule):
         if 'test_dataset' in params:
             self.testset_param = params['test_dataset']
 
-
     def setup(self, stage=None):
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
@@ -49,7 +48,7 @@ class DInterface(LightningDataModule):
             to overwrite the corresponding value in self.kwargs.
         """
         if params['type'] == 'hpatches':
-            return HPatchesDataset(params['root'], params['alteration'])
+            return HPatchesDataset(params['root'], params['alteration'], params['image_size'], params['gray'])
         elif params['type'] == 'megadepth':
             return MegaDepthDataset(params['root'], train, params['using_cache'],
                                     params['pairs_per_scene'], params['image_size'],
