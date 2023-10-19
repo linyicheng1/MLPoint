@@ -61,8 +61,8 @@ class MInterface(pl.LightningModule):
         # self.num_feat = val_pts['num_feat']
         # self.repeatability = val_pts['repeatability']
         # kps
-        kps0_valid, kps01_valid, ids01, _ = utils.warp(kps_0, warp01_params)
-        kps1_valid, kps10_valid, ids10, _ = utils.warp(kps_1, warp10_params)
+        kps0_valid, kps01_valid, ids01, ids01_out = utils.warp(kps_0, warp01_params)
+        kps1_valid, kps10_valid, ids10, ids10_out = utils.warp(kps_1, warp10_params)
 
         # desc
         sample_pts_0 = kps0_valid * 2. - 1.
@@ -75,6 +75,16 @@ class MInterface(pl.LightningModule):
                                 mode='bilinear', align_corners=True, padding_mode='zeros')
         desc_11 = F.grid_sample(desc_map_11, sample_pts_1.unsqueeze(0).unsqueeze(0),
                                 mode='bilinear', align_corners=True, padding_mode='zeros')
+        sample_pts_0_out = kps_0[ids01_out][:, :-1] * 2. - 1.
+        sample_pts_1_out = kps_1[ids10_out][:, :-1] * 2. - 1.
+        desc_00_out = F.grid_sample(desc_map_00, sample_pts_0_out.unsqueeze(0).unsqueeze(0),
+                                    mode='bilinear', align_corners=True, padding_mode='zeros')
+        desc_01_out = F.grid_sample(desc_map_01, sample_pts_1_out.unsqueeze(0).unsqueeze(0),
+                                    mode='bilinear', align_corners=True, padding_mode='zeros')
+        desc_10_out = F.grid_sample(desc_map_10, sample_pts_0_out.unsqueeze(0).unsqueeze(0),
+                                    mode='bilinear', align_corners=True, padding_mode='zeros')
+        desc_11_out = F.grid_sample(desc_map_11, sample_pts_1_out.unsqueeze(0).unsqueeze(0),
+                                    mode='bilinear', align_corners=True, padding_mode='zeros')
         score0 = F.grid_sample(scores_map_0, sample_pts_0.unsqueeze(0).unsqueeze(0),
                                 mode='bilinear', align_corners=True, padding_mode='zeros')
         score1 = F.grid_sample(scores_map_1, sample_pts_1.unsqueeze(0).unsqueeze(0),
@@ -85,12 +95,12 @@ class MInterface(pl.LightningModule):
         loss_kps_1 = projection_loss(kps10_valid.unsqueeze(0), score1.view(1, -1, 1), scores_map_0, 8)
 
         # 3.2 local consistency loss
-        # loss_desc_00 = local_loss(desc_00_valid.squeeze(2).transpose(1, 2),
-        #                           desc_00_out.squeeze(2).transpose(1, 2),
-        #                           desc_map_01, kps01_valid.unsqueeze(0), win_size=16)
-        # loss_desc_01 = local_loss(desc_01_valid.squeeze(2).transpose(1, 2),
-        #                           desc_01_out.squeeze(2).transpose(1, 2),
-        #                           desc_map_00, kps10_valid.unsqueeze(0), win_size=16)
+        loss_desc_00 = local_loss(desc_00.squeeze(2).transpose(1, 2),
+                                  desc_00_out.squeeze(2).transpose(1, 2),
+                                  desc_map_01, kps01_valid.unsqueeze(0), win_size=8)
+        loss_desc_01 = local_loss(desc_01.squeeze(2).transpose(1, 2),
+                                  desc_01_out.squeeze(2).transpose(1, 2),
+                                  desc_map_00, kps10_valid.unsqueeze(0), win_size=8)
 
         # loss_desc_10 = local_loss(desc_10.squeeze(2), desc_map_11, kps01_valid.unsqueeze(0), win_size=8)
         # loss_desc_11 = local_loss(desc_11.squeeze(2), desc_map_10, kps10_valid.unsqueeze(0), win_size=8)
@@ -125,7 +135,7 @@ class MInterface(pl.LightningModule):
             # 'loss_match_10': loss_match_10
         }
 
-        return proj_weight * (loss_kps_0 + loss_kps_1)  # + cons_weight * (loss_desc_00 + loss_desc_01)
+        return proj_weight * (loss_kps_0 + loss_kps_1) + cons_weight * (loss_desc_00 + loss_desc_01)
                # match_weight * (loss_match_01 + loss_match_10)  # + \
 
 

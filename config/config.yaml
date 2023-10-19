@@ -61,18 +61,18 @@ test:
             test_dataset:
                 type: hpatches
                 root: /media/server/4cda377d-28db-4424-921c-6a1e0545ceeb/WangShuo/datasets/HPatch
-                alteration: v
+                alteration: i
                 image_size: 512
                 gray: False
     model:
         params:
             pretrained: True
-            weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_3000.pth
+            weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_1600.pth
             model_size:
                 c0: 3
                 c1: 4
                 c2: 6
             nms_dist: 4
             min_score: 0.0
-            top_k: 300
+            top_k: 1000
             threshold: 3
