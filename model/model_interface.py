@@ -34,6 +34,7 @@ class MInterface(pl.LightningModule):
         self.repeatability = None
         self.accuracy = None
         self.matching_score = None
+        self.max_repeatability = 0
 
     def forward(self, img: Tensor):
         return self.model(img)
@@ -208,10 +209,12 @@ class MInterface(pl.LightningModule):
         for k, v in batch['warp10_params'].items():
             warp10_params[k] = v[0]
         self.model.eval()
-
         result0 = self(batch['image0'])
         result1 = self(batch['image1'])
-
+        nms_dist = self.params['nms_dist']
+        threshold = self.params['threshold']
+        top_k = self.params['top_k']
+        min_score = self.params['min_score']
         # sp
         # result0 = self.sp(batch['image0'].cpu())
         # result1 = self.sp(batch['image1'].cpu())
@@ -221,13 +224,15 @@ class MInterface(pl.LightningModule):
         #
         # harris_map_0 = torch.from_numpy(cv2.cornerHarris(img0, 2, 3, 0.04)).unsqueeze(0).unsqueeze(0)
         # harris_map_1 = torch.from_numpy(cv2.cornerHarris(img1, 2, 3, 0.04)).unsqueeze(0).unsqueeze(0)
-        # kps_0 = utils.detection(harris_map_0.to(batch['image0'].device), nms_dist=4, threshold=0.0, max_pts=300)
-        # kps_1 = utils.detection(harris_map_1.to(batch['image0'].device), nms_dist=4, threshold=0.0, max_pts=300)
+        # kps_0 = utils.detection(harris_map_0.to(batch['image0'].device), nms_dist=4, threshold=0.0, max_pts=1000)
+        # kps_1 = utils.detection(harris_map_1.to(batch['image0'].device), nms_dist=4, threshold=0.0, max_pts=1000)
 
-        kps_0 = utils.detection(result0[0].detach().to(batch['image0'].device), nms_dist=4, threshold=0.0, max_pts=300)
-        kps_1 = utils.detection(result1[0].detach().to(batch['image0'].device), nms_dist=4, threshold=0.0, max_pts=300)
+        kps_0 = utils.detection(result0[0].detach().to(batch['image0'].device), nms_dist=nms_dist, threshold=min_score,
+                                max_pts=top_k)
+        kps_1 = utils.detection(result1[0].detach().to(batch['image0'].device), nms_dist=nms_dist, threshold=min_score,
+                                max_pts=top_k)
 
-        val_pts = utils.val_key_points(kps_0, kps_1, warp01_params, warp10_params, th=3)
+        val_pts = utils.val_key_points(kps_0, kps_1, warp01_params, warp10_params, th=threshold)
         if val_pts['num_feat'] > 0:
             self.num_feat.append(val_pts['num_feat'])
             self.repeatability.append(val_pts['repeatability'])
@@ -252,17 +257,23 @@ class MInterface(pl.LightningModule):
                 "repeatability_mean": 0,
                 }
 
-    def on_validation_epoch_start(self):
+    def on_validation_start(self):
         self.num_feat = []
         self.repeatability = []
         self.accuracy = []
         self.matching_score = []
 
-    def on_validation_epoch_end(self) -> None:
+    def on_validation_end(self) -> None:
         num_feat_mean = np.mean(np.array(self.num_feat))
         repeatability_mean = np.mean(np.array(self.repeatability))
+        if self.max_repeatability < repeatability_mean:
+            self.max_repeatability = repeatability_mean
+            torch.save(self.model.state_dict(),
+                       "/home/server/linyicheng/py_proj/MLPoint/weight/best_{}.pth".format(repeatability_mean))
+
         print('num_feat_mean: ', num_feat_mean)
         print('repeatability_mean: ', repeatability_mean)
+        self.board.add_point_metrics(num_feat_mean, repeatability_mean, self.global_step)
 
     def on_test_start(self) -> None:
         self.num_feat = []

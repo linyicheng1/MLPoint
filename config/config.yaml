@@ -6,7 +6,7 @@ fit:
         max_steps: 10000
         devices: [1]
         accumulate_grad_batches: 16
-        val_check_interval: 0.1
+        val_check_interval: 0.01
     data:
         params:
             batch_size: 1
@@ -23,13 +23,13 @@ fit:
             val_dataset:
                 type: hpatches
                 root: /media/server/4cda377d-28db-4424-921c-6a1e0545ceeb/WangShuo/datasets/HPatch
-                alteration: v
+                alteration: all
                 image_size: 512
                 gray: False
     model:
         params:
-            pretrained: False
-            weight: /home/server/linyicheng/py_proj/MLPoint/weight/save_2/last_1200.pth
+            pretrained: True
+            weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_1600.pth
 #            weight: /home/server/linyicheng/py_proj/MLPoint/weight/superpoint_v1.pth
             loss:
                 projection_loss_weight: 1.0
@@ -74,5 +74,5 @@ test:
                 c2: 6
             nms_dist: 4
             min_score: 0.0
-            top_k: 1000
+            top_k: 300
             threshold: 3
