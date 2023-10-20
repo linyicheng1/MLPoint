@@ -53,20 +53,26 @@ class board(object):
         self.writer.add_image('Image/1', image1, step, dataformats="NCHW")
 
     def add_keypoint_image(self, keypoint0, keypoint1, keypoint01, keypoint10, step):
-        self.writer.add_image('Keypoint/0', keypoint0, step, dataformats="HWC")
-        self.writer.add_image('Keypoint/1', keypoint1, step, dataformats="HWC")
+        if keypoint0 is not None:
+            self.writer.add_image('Keypoint/0', keypoint0, step, dataformats="HWC")
+        if keypoint1 is not None:
+            self.writer.add_image('Keypoint/1', keypoint1, step, dataformats="HWC")
         if keypoint01 is not None:
             self.writer.add_image('Keypoint/01', keypoint01, step, dataformats="HWC")
         if keypoint10 is not None:
             self.writer.add_image('Keypoint/10', keypoint10, step, dataformats="HWC")
 
     def add_score_map(self, score_map0, score_map1, step):
-        self.writer.add_image('Score_map/0', score_map0, step, dataformats="NCHW")
-        self.writer.add_image('Score_map/1', score_map1, step, dataformats="NCHW")
+        if score_map0 is not None:
+            self.writer.add_image('Score_map/0', score_map0, step, dataformats="NCHW")
+        if score_map1 is not None:
+            self.writer.add_image('Score_map/1', score_map1, step, dataformats="NCHW")
 
     def add_local_desc_map(self, local_desc_map0, local_desc_map1, step):
-        self.writer.add_image('Local_desc_map/0', local_desc_map0, step, dataformats="NCHW")
-        self.writer.add_image('Local_desc_map/1', local_desc_map1, step, dataformats="NCHW")
+        if local_desc_map0 is not None:
+            self.writer.add_image('Local_desc_map/0', local_desc_map0, step, dataformats="NCHW")
+        if local_desc_map1 is not None:
+            self.writer.add_image('Local_desc_map/1', local_desc_map1, step, dataformats="NCHW")
 
     def add_dense_matching_map(self, dense_matching_map0, dense_matching_map1, step):
         self.writer.add_image('Dense_matching_map/0', dense_matching_map0, step)

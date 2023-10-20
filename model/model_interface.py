@@ -126,8 +126,8 @@ class MInterface(pl.LightningModule):
             'kps_1': kps_1[:, :2],
             'kps_01': kps01_valid,
             'kps_10': kps10_valid,
-            # 'loss_desc_00': loss_desc_00,
-            # 'loss_desc_01': loss_desc_01,
+            'loss_desc_00': loss_desc_00,
+            'loss_desc_01': loss_desc_01,
             'desc_map_00': desc_map_00,
             'desc_map_01': desc_map_01,
             # 'loss_desc_10': loss_desc_10,
@@ -183,19 +183,19 @@ class MInterface(pl.LightningModule):
     def on_after_backward(self) -> None:
         if  self.global_step % 10 == 0:
             # log
-            # self.board.add_local_loss0(self.losses['loss_desc_00'], self.losses['loss_desc_01'], self.global_step)
+            self.board.add_local_loss0(self.losses['loss_desc_00'], self.losses['loss_desc_01'], self.global_step)
             self.board.add_projection_loss(self.losses['loss_kps_0'], self.losses['loss_kps_1'], self.global_step)
             # self.board.add_dense_matching_loss(self.losses['loss_match_01'], self.losses['loss_match_10'], self.global_step)
             # self.board.add_image(self.losses['image0'], self.losses['image1'], self.global_step)
-            self.board.add_score_map(self.losses['scores_map_0'], self.losses['scores_map_1'], self.global_step)
+            self.board.add_score_map(self.losses['scores_map_0'], None, self.global_step)
             show_0 = (self.losses['image0'][0].cpu().permute(1, 2, 0).numpy() * 255).astype('uint8')
             show_1 = (self.losses['image1'][0].cpu().permute(1, 2, 0).numpy() * 255).astype('uint8')
             show_6 = utils.plot_keypoints(show_0, self.losses['kps_0'].cpu())
-            show_7 = utils.plot_keypoints(show_1, self.losses['kps_1'].cpu())
+            # show_7 = utils.plot_keypoints(show_1, self.losses['kps_1'].cpu())
             # show_8 = utils.plot_keypoints(show_1, self.losses['kps_01'].cpu())
             # show_9 = utils.plot_keypoints(show_0, self.losses['kps_10'].cpu())
-            # self.board.add_local_desc_map(self.losses['desc_map_00'], self.losses['desc_map_01'], self.global_step)
-            self.board.add_keypoint_image(show_6, show_7, None, None, self.global_step)
+            self.board.add_local_desc_map(self.losses['desc_map_00'], None, self.global_step)
+            self.board.add_keypoint_image(show_6, None, None, None, self.global_step)
             # self.board.add_point_metrics(self.num_feat, self.repeatability)
         # 100 times save model
         if self.global_step % 100 == 0:

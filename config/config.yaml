@@ -6,7 +6,7 @@ fit:
         max_steps: 10000
         devices: [1]
         accumulate_grad_batches: 16
-        val_check_interval: 0.01
+        val_check_interval: 0.2
     data:
         params:
             batch_size: 1
@@ -29,7 +29,7 @@ fit:
     model:
         params:
             pretrained: True
-            weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_1600.pth
+            weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_500.pth
 #            weight: /home/server/linyicheng/py_proj/MLPoint/weight/superpoint_v1.pth
             loss:
                 projection_loss_weight: 1.0
