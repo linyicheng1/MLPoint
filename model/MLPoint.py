@@ -70,9 +70,6 @@ class ML_Point(nn.Module):
         self.res1 = ResBlock(c0, c1, 1, downsample=nn.Conv2d(c0, c1, 1), gate=self.gate)
         self.conv1 = resnet.conv1x1(c1, c2)
         self.conv_head1 = resnet.conv1x1(c2, 4)
-        self.res11 = ResBlock(c0, c1, 1, downsample=nn.Conv2d(c0, c1, 1), gate=self.gate)
-        self.conv11 = resnet.conv1x1(c1, c2)
-        self.conv_head11 = resnet.conv1x1(c2, 4)
         # second layer
         self.res2 = ResBlock(c1, 16, stride=2, downsample=nn.Conv2d(c1, 16, 1, stride=2), gate=self.gate)
         self.conv2 = resnet.conv1x1(16, 32)
@@ -100,10 +97,6 @@ class ML_Point(nn.Module):
         layer2 = self.pool4(layer2)  # 1/4
         layer3 = self.res3(layer2)  # 1/2
         layer3 = self.pool4(layer3)  # 1/4
-        layer11 = self.res11(x)
-        x11 = self.gate(self.conv11(layer11))
-        x11 = self.conv_head11(x11)
-        x11 = torch.sigmoid(x11[:, :-1, :, :])
         # head
         x1 = self.gate(self.conv1(layer1))
         x1 = self.conv_head1(x1)
@@ -118,7 +111,7 @@ class ML_Point(nn.Module):
         x2_up = torch.cat([x3_up, x2], dim=1)
         x2_up = F.interpolate(x2_up, scale_factor=8, mode='bilinear', align_corners=True)
         desc = x2_up #  torch.cat([x2_up, x1], dim=1)
-        return scores_map / torch.norm(scores_map) * 300, x11, x2, x3, desc
+        return scores_map / torch.norm(scores_map) * 300, x1, x2, x3, desc
 
 
 if __name__ == '__main__':

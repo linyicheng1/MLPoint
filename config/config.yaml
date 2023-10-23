@@ -18,17 +18,17 @@ fit:
                 pairs_per_scene: 100
                 image_size: 512
                 colorjit: True
-                gray: true
+                gray: True
                 crop_or_scale: 'scale'
             val_dataset:
                 type: hpatches
                 root: /media/server/4cda377d-28db-4424-921c-6a1e0545ceeb/WangShuo/datasets/HPatch
                 alteration: all
                 image_size: 512
-                gray: False
+                gray: True
     model:
         params:
-            pretrained: True
+            pretrained: False
             weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_500.pth
 #            weight: /home/server/linyicheng/py_proj/MLPoint/weight/superpoint_v1.pth
             loss:
@@ -42,9 +42,9 @@ fit:
                 step_size: 10
                 gamma: 0.1
             model_size:
-                c0: 3
-                c1: 4
-                c2: 6
+                c0: 1
+                c1: 3
+                c2: 4
             nms_dist: 4
             min_score: 0.0
             top_k: 300
@@ -61,17 +61,17 @@ test:
             test_dataset:
                 type: hpatches
                 root: /media/server/4cda377d-28db-4424-921c-6a1e0545ceeb/WangShuo/datasets/HPatch
-                alteration: i
-                image_size: 512
-                gray: False
+                alteration: v
+                image_size: 256
+                gray: True
     model:
         params:
             pretrained: True
-            weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_1600.pth
+            weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_4200.pth
             model_size:
-                c0: 3
-                c1: 4
-                c2: 6
+                c0: 1
+                c1: 3
+                c2: 4
             nms_dist: 4
             min_score: 0.0
             top_k: 300
