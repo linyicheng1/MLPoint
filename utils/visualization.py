@@ -33,38 +33,57 @@ def plot_keypoints(image: torch.tensor, kpts: torch.tensor,
     return out
 
 
-def plot_dense_matches(img0: torch.tensor, img1: torch.tensor,
-                       matches: torch.tensor) -> np.ndarray:
+def plot_dense_matches(img0, img1,
+                       xys, matches_gt) -> np.ndarray:
     """ visualize dense matches
     :param img0: [H, W, 3] in range [0, 1]
     :param img1: [H, W, 3] in range [0, 1]
-    :param matches: [2, H/64, W/64] in range [0, H/64 * W/64)
+    :param xys:
+    :param matches_gt:
     """
-    matches01 = matches[0]
-    matches10 = matches[1]
-    show = np.concatenate([img0.numpy(), img1.numpy()], axis=1)
-    show = (show * 255).astype(np.uint8)  # convert to uint8
+    img0 = img0.cpu().detach().numpy() if isinstance(img0, torch.Tensor) else img0
+    img1 = img1.cpu().detach().numpy() if isinstance(img1, torch.Tensor) else img1
+    H, W = img0.shape[0:2]
+
+    w, h = W / 64, H / 64
+    pts_x = torch.range(1 / w / 2, 1 - 1 / w / 2, 1 / w)
+    pts_y = torch.range(1 / h / 2, 1 - 1 / h / 2, 1 / h)
+    pts = torch.stack(torch.meshgrid(pts_y, pts_x), dim=-1).reshape(-1, 2)[..., [1, 0]]
+
+    if img0.dtype is not np.dtype('uint8'):
+        img0 = img0 * 255
+        img0 = img0.astype(np.uint8)
+    if img1.dtype is not np.dtype('uint8'):
+        img1 = img1 * 255
+        img1 = img1.astype(np.uint8)
+
+    show = np.concatenate([img0, img1], axis=1).copy()  # convert to uint8
     if len(show.shape) == 2 or show.shape[2] == 1:
         show = cv2.cvtColor(show, cv2.COLOR_GRAY2RGB)
-    for i in range(matches01.shape[0] * matches01.shape[1]):
-        id_x = i % matches01.shape[1]
-        id_y = i // matches01.shape[1]
-        if matches01[id_y, id_x] != -1:
-            matched_id = matches01[id_y, id_x]
-            cv2.line(show, (id_x * 64 + 32, id_y * 64 + 32),
-                     (int(matched_id) % matches01.shape[1] * 64 + img0.shape[1] + 32,
-                      int(matched_id) // matches01.shape[1] * 64 + 32),
-                     (0, 255, 0), 1)
 
-    for i in range(matches10.shape[0] * matches10.shape[1]):
-        id_x = i % matches10.shape[1]
-        id_y = i // matches10.shape[1]
-        if matches10[id_y, id_x] != -1:
-            matched_id = matches10[id_y, id_x]
-            cv2.line(show, (id_x * 64 + img0.shape[1] + 32, id_y * 64 + 32),
-                     (int(matched_id) % matches10.shape[1] * 64 + 32,
-                      int(matched_id) // matches10.shape[1] * 64 + 32),
-                     (0, 255, 0), 1)
+    for i in range(len(matches_gt[2])):
+        match_id = matches_gt[2][i]
+        x0 = int(pts[match_id, 0] * W)
+        y0 = int(pts[match_id, 1] * H)
+        x1 = int(xys[match_id, 0] * W) + W
+        y1 = int(xys[match_id, 1] * H)
+        s0 = int(xys[match_id, 2] * 255)
+        x2 = int(matches_gt[1][i, 0] * W) + W
+        y2 = int(matches_gt[1][i, 1] * H)
+        show = cv2.drawMarker(show, (x0, y0), (100, 0, 0), cv2.MARKER_SQUARE, 32)
+        show = cv2.line(show, (x0, y0), (x1, y1), (0, s0, 0), 1)
+        show = cv2.line(show, (x1, y1), (x2, y2), (0, 0, s0), 1)
+
+    # for i in range(len(matches_gt[3])):
+    #     match_id = matches_gt[3][i]
+    #     x0 = int(pts[match_id, 0] * W)
+    #     y0 = int(pts[match_id, 1] * H)
+    #     match_id = matches_gt[3][i]
+    #     x1 = int(xys[match_id, 0] * W) + W
+    #     y1 = int(xys[match_id, 1] * H)
+    #     s0 = int(xys[match_id, 2] * 255)
+    #     show = cv2.line(show, (x0, y0), (x1, y1), (s0, 0, 0), 1)
+
     return show
 
 
@@ -125,16 +144,18 @@ def plot_op_matches(img0: torch.tensor, img1: torch.tensor,
 
 def plot_gt_matches(img0, img1, dense_matches):
     show = np.concatenate([img0, img1], axis=1)
-    show = (show * 255).astype(np.uint8)  # convert to uint8
+    show = show.astype(np.uint8).copy()  # convert to uint8
     if len(show.shape) == 2 or show.shape[2] == 1:
         show = cv2.cvtColor(show, cv2.COLOR_GRAY2RGB)
     h, w, _ = img0.shape
     for i in range(dense_matches.shape[0]):
         m = dense_matches[i]
+        cv2.line(show, (int(m[0]) % 8 * 64 + 32, int(m[0]) // 8 * 64 + 32),
+                 (int(m[1]) % 8 * 64 + img0.shape[1] + 32, int(m[1]) // 8 * 64 + 32),
+                 (0, 255, 0), 1)
+    return show
 
 
 if __name__ == "__main__":
     ''' test plot functions '''
     print("test plot functions")
-
-

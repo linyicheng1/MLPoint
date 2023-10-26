@@ -3,7 +3,7 @@ fit:
     seed_everything: 693265068
     trainer:
         accelerator: gpu
-        max_steps: 10000
+        max_steps: 100000
         devices: [1]
         accumulate_grad_batches: 16
         val_check_interval: 0.2
@@ -29,7 +29,7 @@ fit:
     model:
         params:
             pretrained: False
-            weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_500.pth
+            weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_9900.pth
 #            weight: /home/server/linyicheng/py_proj/MLPoint/weight/superpoint_v1.pth
             loss:
                 projection_loss_weight: 1.0
@@ -44,7 +44,12 @@ fit:
             model_size:
                 c0: 1
                 c1: 3
-                c2: 4
+                h0: 4
+                c2: 32
+                h1: 32
+                c3: 64
+                c4: 64
+                h2: 64
             nms_dist: 4
             min_score: 0.0
             top_k: 300
@@ -71,7 +76,12 @@ test:
             model_size:
                 c0: 1
                 c1: 3
-                c2: 4
+                h0: 4
+                c2: 32
+                h1: 32
+                c3: 64
+                c4: 64
+                h2: 64
             nms_dist: 4
             min_score: 0.0
             top_k: 300

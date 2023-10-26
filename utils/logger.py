@@ -30,6 +30,9 @@ class board(object):
     def close(self):
         self.writer.close()
 
+    def get_writer(self):
+        return self.writer
+
     ''' 1. loss curve '''
     def add_projection_loss(self, loss_01, loss_10, step):
         self.writer.add_scalar('Loss/projection_01', loss_01, step)
@@ -75,8 +78,10 @@ class board(object):
             self.writer.add_image('Local_desc_map/1', local_desc_map1, step, dataformats="NCHW")
 
     def add_dense_matching_map(self, dense_matching_map0, dense_matching_map1, step):
-        self.writer.add_image('Dense_matching_map/0', dense_matching_map0, step)
-        self.writer.add_image('Dense_matching_map/1', dense_matching_map1, step)
+        if dense_matching_map0 is not None:
+            self.writer.add_image('Dense_matching_map/0', dense_matching_map0, step, dataformats="HWC")
+        if dense_matching_map1 is not None:
+            self.writer.add_image('Dense_matching_map/1', dense_matching_map1, step, dataformats="HWC")
 
     def add_sparse_matching_map(self, sparse_matching_map, step):
         self.writer.add_image('Sparse_matching_map', sparse_matching_map, step)

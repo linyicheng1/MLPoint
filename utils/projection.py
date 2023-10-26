@@ -174,16 +174,12 @@ def warp_dense(h: int, w: int, params: dict):
     pts = torch.stack(torch.meshgrid(pts_y, pts_x), dim=-1).reshape(-1, 2)[..., [1, 0]]
     pts = pts.to(params['depth0'].device)
     if mode == 'homo':
-        kps0_valid, kps01_valid, ids01, _ = warp_homography(pts, params)
+        kps0_valid, kps01_valid, ids01, ids01_out = warp_homography(pts, params)
     elif mode == 'se3':
-        kps0_valid, kps01_valid, ids01, _ = warp_se3(pts, params)
+        kps0_valid, kps01_valid, ids01, ids01_out = warp_se3(pts, params)
     else:
         raise ValueError('unknown mode!')
-    match = []
-    for i in range(len(ids01)):
-        ids1 = int(kps01_valid[i][0] * w) + int(kps01_valid[i][1] * h) * w
-        match.append([int(ids01[i]), ids1])
-    return torch.from_numpy(np.array(match))
+    return [kps0_valid, kps01_valid, ids01, ids01_out]
 
 
 def warp(kpts0, params: dict):

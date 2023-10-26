@@ -100,6 +100,32 @@ def fast_nms(
     return image_probs
 
 
+def predict_positions(desc0: torch.Tensor, desc1: torch.Tensor) -> torch.Tensor:
+    # get score_map
+    b, d, h, w = desc0.shape
+    x = torch.linspace(1/w/2, 1 - 1/w/2, w)
+    y = torch.linspace(1/h/2, 1 - 1/h/2, h)
+    hw_grid = torch.stack(torch.meshgrid([x, y])).view(2, -1).t()[:, [1, 0]].to(desc0.device)
+    desc0 = desc0.view(1, desc0.shape[1], -1)
+    desc1 = desc1.view(1, desc0.shape[1], -1)
+    score_map = torch.einsum('bdn,bdm->bnm', desc0, desc1)
+    score_map = torch.cat([score_map, (torch.ones(1, h * w, 1) * 0.01).to(score_map.device)], dim=2)
+
+    # normalize score_map
+    max_v = score_map.max(dim=2).values.detach()
+    x_exp = torch.exp((score_map - max_v[:, :, None]) / 0.02)[0, :, :-1]
+
+    # predict x, y
+    xy_residual = x_exp @ hw_grid / x_exp.sum(dim=1)[:, None]
+
+    # interpolate score_map
+    sample_pts = xy_residual * 2. - 1
+    scores = F.grid_sample(x_exp.view(b, h*w, h, w), sample_pts.unsqueeze(0).unsqueeze(0),
+                            mode='bilinear', align_corners=True, padding_mode='zeros')
+    scores = torch.diag(scores.view(h*w, h*w))
+    return torch.cat([xy_residual, scores[:, None]], dim=1)
+
+
 def prob_map_to_positions_with_prob(
     prob_map: torch.Tensor,
     threshold: float = 0.0,
@@ -181,4 +207,19 @@ def detection(score_map: torch.Tensor,
     if pts.shape[0] > max_pts:
         pts = pts[torch.argsort(pts[:, 2], descending=True)[:max_pts]]
     return pts
+
+
+if __name__ == '__main__':
+    # random generate desc_map
+    desc_map_0 = torch.rand(1, 32, 8, 8)
+    desc_map_1 = desc_map_0 + 0.3 * torch.rand_like(desc_map_0)
+    desc_map_0 = desc_map_0 + 0.3 * torch.rand_like(desc_map_0)
+
+    # normalize desc_map
+    desc_map_0 = F.normalize(desc_map_0, dim=1)
+    desc_map_1 = F.normalize(desc_map_1, dim=1)
+
+    # predict positions
+    positions = predict_positions(desc_map_0, desc_map_1)
+    print(positions)
 

@@ -38,12 +38,11 @@ def arange_like(x, dim: int):
     return x.new_ones(x.shape[dim]).cumsum(0) - 1  # traceable in 1.1
 
 
-def match_loss(desc0, desc1, all_matches, dim=4):
+def match_loss(desc0, desc1, all_matches):
     """
     :param desc0:  (B, D, N)
     :param desc1:  (B, D, N)
     :param all_matches: (B, N, 2)
-    :param dim: int
     :return:
     """
     desc0 = desc0.view(1, desc0.shape[1], -1)
@@ -82,6 +81,16 @@ def match_loss(desc0, desc1, all_matches, dim=4):
     indices1 = torch.where(valid1, indices1, indices1.new_tensor(-1))
 
     return loss_mean[0], indices0, indices1
+
+
+def new_match_loss(xys, matches_gt, score):
+    xys_valid = xys[matches_gt[2], :]
+    xys_invalid = xys[matches_gt[3], :]
+    score_valid = score[matches_gt[2], :]
+    score_invalid = score[matches_gt[3], :]
+    dist = torch.norm(xys_valid[:, 0:2] - matches_gt[1], dim=1) * 10
+    loss = torch.mean(dist * score_valid)
+    return loss
 
 
 def projection_loss(pts01, score, pts1_map, win_size=2):

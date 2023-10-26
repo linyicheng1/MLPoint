@@ -1,4 +1,4 @@
-from .detect import detection
+from .detect import detection, predict_positions
 from .logger import board
 from .match import prior_match, dense_match, optical_flow_match
 from .projection import warp, warp_dense

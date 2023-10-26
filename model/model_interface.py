@@ -1,8 +1,6 @@
 import inspect
 import logging
-
 import cv2
-
 from utils.logger import board
 import torch
 import importlib
@@ -14,7 +12,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from .MLPoint import ML_Point
 import utils
-from model.losses import match_loss, projection_loss, local_loss
+from model.losses import match_loss, projection_loss, local_loss, new_match_loss
 from model.SuperPoint import SuperPoint
 
 
@@ -76,6 +74,11 @@ class MInterface(pl.LightningModule):
                                 mode='bilinear', align_corners=True, padding_mode='zeros')
         desc_11 = F.grid_sample(desc_map_11, sample_pts_1.unsqueeze(0).unsqueeze(0),
                                 mode='bilinear', align_corners=True, padding_mode='zeros')
+        desc_20 = F.grid_sample(desc_map_20, sample_pts_0.unsqueeze(0).unsqueeze(0),
+                                mode='bilinear', align_corners=True, padding_mode='zeros')
+        desc_21 = F.grid_sample(desc_map_21, sample_pts_1.unsqueeze(0).unsqueeze(0),
+                                mode='bilinear', align_corners=True, padding_mode='zeros')
+
         sample_pts_0_out = kps_0[ids01_out][:, :-1] * 2. - 1.
         sample_pts_1_out = kps_1[ids10_out][:, :-1] * 2. - 1.
         desc_00_out = F.grid_sample(desc_map_00, sample_pts_0_out.unsqueeze(0).unsqueeze(0),
@@ -86,6 +89,11 @@ class MInterface(pl.LightningModule):
                                     mode='bilinear', align_corners=True, padding_mode='zeros')
         desc_11_out = F.grid_sample(desc_map_11, sample_pts_1_out.unsqueeze(0).unsqueeze(0),
                                     mode='bilinear', align_corners=True, padding_mode='zeros')
+        desc_20_out = F.grid_sample(desc_map_20, sample_pts_0_out.unsqueeze(0).unsqueeze(0),
+                                    mode='bilinear', align_corners=True, padding_mode='zeros')
+        desc_21_out = F.grid_sample(desc_map_21, sample_pts_1_out.unsqueeze(0).unsqueeze(0),
+                                    mode='bilinear', align_corners=True, padding_mode='zeros')
+
         score0 = F.grid_sample(scores_map_0, sample_pts_0.unsqueeze(0).unsqueeze(0),
                                mode='bilinear', align_corners=True, padding_mode='zeros')
         score1 = F.grid_sample(scores_map_1, sample_pts_1.unsqueeze(0).unsqueeze(0),
@@ -111,8 +119,12 @@ class MInterface(pl.LightningModule):
                                   desc_map_10, kps10_valid.unsqueeze(0), win_size=8)
 
         # 3.3 dense match loss
-        # loss_match_01, indices00, indices01 = match_loss(desc_map_20, desc_map_21, dense_matches_01.unsqueeze(0))
-        # loss_match_10, indices10, indices11 = match_loss(desc_map_21, desc_map_20, dense_matches_10.unsqueeze(0))
+        xys_01 = utils.predict_positions(desc_map_20, desc_map_21)
+        xys_10 = utils.predict_positions(desc_map_21, desc_map_20)
+        score_0 = F.avg_pool2d(scores_map_0.detach(), 64, 64).view(-1, 1)
+        score_1 = F.avg_pool2d(scores_map_1.detach(), 64, 64).view(-1, 1)
+        loss_match_01 = new_match_loss(xys_01, dense_matches_01, score_0)
+        loss_match_10 = new_match_loss(xys_10, dense_matches_10, score_1)
 
         # 3.4 total loss
         proj_weight = 1  # self.params['loss']['projection_loss_weight']
@@ -134,15 +146,23 @@ class MInterface(pl.LightningModule):
             'loss_desc_01': loss_desc_01,
             'desc_map_00': desc_map_00,
             'desc_map_01': desc_map_01,
+            'desc_map_10': desc_map_10,
+            'desc_map_11': desc_map_11,
+            'desc_map_20': desc_map_20,
+            'desc_map_21': desc_map_21,
             'loss_desc_10': loss_desc_10,
             'loss_desc_11': loss_desc_11,
-            # 'loss_match_01': loss_match_01,
-            # 'loss_match_10': loss_match_10
+            'loss_match_01': loss_match_01,
+            'loss_match_10': loss_match_10,
+            'xys_01': xys_01,
+            'xys_10': xys_10,
+            'dense_matches_01': dense_matches_01,
+            'dense_matches_10': dense_matches_10,
         }
 
-        return proj_weight * (loss_kps_0 + loss_kps_1) + \
-               cons_weight * (loss_desc_00 + loss_desc_01 + loss_desc_10 + loss_desc_11)
-        # match_weight * (loss_match_01 + loss_match_10)  # + \
+        return match_weight * (loss_match_01 + loss_match_10) + proj_weight * (loss_kps_0 + loss_kps_1)  # + \
+               # cons_weight * (loss_desc_00 + loss_desc_01 + loss_desc_10 + loss_desc_11) + \
+               # match_weight * (loss_match_01 + loss_match_10)
 
     def step(self, batch: Tensor) -> Tensor:
         if self.params['model_size']['c0'] == 1:
@@ -189,23 +209,44 @@ class MInterface(pl.LightningModule):
             logging.debug('loss does not require grad, skipping backward')
 
     def on_after_backward(self) -> None:
-        if self.global_step % 10 == 0:
+        if self.global_step % 20 == 0:
             # log
             self.board.add_local_loss0(self.losses['loss_desc_00'], self.losses['loss_desc_01'], self.global_step)
             self.board.add_local_loss1(self.losses['loss_desc_10'], self.losses['loss_desc_11'], self.global_step)
             self.board.add_projection_loss(self.losses['loss_kps_0'], self.losses['loss_kps_1'], self.global_step)
-            # self.board.add_dense_matching_loss(self.losses['loss_match_01'], self.losses['loss_match_10'], self.global_step)
-            # self.board.add_image(self.losses['image0'], self.losses['image1'], self.global_step)
+            self.board.add_dense_matching_loss(self.losses['loss_match_01'], self.losses['loss_match_10'], self.global_step)
+
+            # score map
             self.board.add_score_map(self.losses['scores_map_0'], None, self.global_step)
+
+            # images
             show_0 = (self.losses['image0'][0].cpu().permute(1, 2, 0).numpy() * 255).astype('uint8')
             show_1 = (self.losses['image1'][0].cpu().permute(1, 2, 0).numpy() * 255).astype('uint8')
-            show_6 = utils.plot_keypoints(show_0, self.losses['kps_0'].cpu())
+
+            # kps image
+            show_3 = utils.plot_keypoints(show_0, self.losses['kps_0'].cpu())
             # show_7 = utils.plot_keypoints(show_1, self.losses['kps_1'].cpu())
             # show_8 = utils.plot_keypoints(show_1, self.losses['kps_01'].cpu())
             # show_9 = utils.plot_keypoints(show_0, self.losses['kps_10'].cpu())
-            self.board.add_local_desc_map(self.losses['desc_map_00'], None, self.global_step)
-            self.board.add_keypoint_image(show_6, None, None, None, self.global_step)
-            # self.board.add_point_metrics(self.num_feat, self.repeatability)
+
+            # match image
+            # show_4 = utils.plot_matches(show_0, show_1)
+            # show_10 = utils.plot_gt_matches(show_0, show_1, self.losses['dense_matches_01'])
+
+            show_dense_matches = utils.plot_dense_matches(show_0, show_1,
+                                                          self.losses['xys_01'],
+                                                          self.losses['dense_matches_01'])
+            # draw images
+            # self.board.add_local_desc_map(self.losses['desc_map_00'], None, self.global_step)
+            self.board.add_keypoint_image(show_3, None, None, None, self.global_step)
+            self.board.add_dense_matching_map(show_dense_matches, None, self.global_step)
+
+            # tmp
+            # show_tmp_1 = utils.plot_gt_matches(show_0, show_1, self.losses['dense_matches_01'])
+            # show_tmp_2 = utils.plot_gt_matches(show_1, show_0, self.losses['dense_matches_10'])
+            # self.board.get_writer().add_image('tmp/1', show_tmp_1, self.global_step, dataformats="HWC")
+            # self.board.get_writer().add_image('tmp/2', show_tmp_2, self.global_step, dataformats="HWC")
+
         # 100 times save model
         if self.global_step % 100 == 0:
             torch.save(self.model.state_dict(),

@@ -64,23 +64,30 @@ class ML_Point(nn.Module):
         super().__init__()
         c0 = params['c0']
         c1 = params['c1']
+        h0 = params['h0']
         c2 = params['c2']
+        h1 = params['h1']
+        c3 = params['c3']
+        c4 = params['c4']
+        h2 = params['h2']
         self.gate = nn.ReLU(inplace=True)
         # first layer
         self.res1 = ResBlock(c0, c1, 1, downsample=nn.Conv2d(c0, c1, 1), gate=self.gate)
-        self.conv1 = resnet.conv1x1(c1, c2)
-        self.conv_head1 = resnet.conv1x1(c2, 4)
+        self.conv1 = resnet.conv1x1(c1, h0)
+        self.conv_head1 = resnet.conv1x1(h0, 4)
         # second layer
-        self.res2 = ResBlock(c1, 16, stride=2, downsample=nn.Conv2d(c1, 16, 1, stride=2), gate=self.gate)
-        self.conv2 = resnet.conv1x1(16, 32)
-        self.conv_head2 = resnet.conv1x1(32, 16)
+        self.res2 = ResBlock(c1, c2, stride=2, downsample=nn.Conv2d(c1, c2, 1, stride=2), gate=self.gate)
+        self.conv2 = resnet.conv1x1(c2, h1)
+        self.conv_head2 = resnet.conv1x1(h1, 32)
         # third layer
-        self.res3 = ResBlock(16, 32, stride=2, downsample=nn.Conv2d(16, 32, 1, stride=2), gate=self.gate)
-        self.conv3 = resnet.conv1x1(32, 64)
-        self.conv_head3 = resnet.conv1x1(64, 32)
+        self.res3 = ResBlock(c2, c3, stride=2, downsample=nn.Conv2d(c2, c3, 1, stride=2), gate=self.gate)
+        self.res4 = ResBlock(c3, c4, stride=1, downsample=nn.Conv2d(c3, c4, 1, stride=1), gate=self.gate)
+        self.conv3 = resnet.conv1x1(c4, h2)
+        self.conv_head3 = resnet.conv1x1(h2, 64)
         # pool
         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
         self.pool4 = nn.MaxPool2d(kernel_size=4, stride=4)
+
 
     def forward(self, x):
         """
@@ -97,21 +104,22 @@ class ML_Point(nn.Module):
         layer2 = self.pool4(layer2)  # 1/4
         layer3 = self.res3(layer2)  # 1/2
         layer3 = self.pool4(layer3)  # 1/4
-        # head
+        layer4 = self.res4(layer3)  # 1
+        # head 1
         x1 = self.gate(self.conv1(layer1))
         x1 = self.conv_head1(x1)
         scores_map = torch.sigmoid(x1[:, 3, :, :]).unsqueeze(1)
-        x1 = torch.sigmoid(x1[:, :-1, :, :])
+        desc_0 = torch.sigmoid(x1[:, :-1, :, :])
+        # head 2
         x2 = self.gate(self.conv2(layer2))
         x2 = self.conv_head2(x2)
-        x3 = self.gate(self.conv3(layer3))
+        desc_1 = F.normalize(x2, p=2, dim=1)
+        # head 3
+        x3 = self.gate(self.conv3(layer4))
         x3 = self.conv_head3(x3)
-        # upsample and concat feature
-        x3_up = F.interpolate(x3, scale_factor=8, mode='bilinear', align_corners=True)
-        x2_up = torch.cat([x3_up, x2], dim=1)
-        x2_up = F.interpolate(x2_up, scale_factor=8, mode='bilinear', align_corners=True)
-        desc = x2_up #  torch.cat([x2_up, x1], dim=1)
-        return scores_map / torch.norm(scores_map) * 300, x1, x2, x3, desc
+        desc_2 = F.normalize(x3, p=2, dim=1)
+
+        return scores_map / torch.norm(scores_map) * 300, desc_0, desc_1, desc_2
 
 
 if __name__ == '__main__':
