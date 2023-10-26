@@ -28,8 +28,8 @@ fit:
                 gray: True
     model:
         params:
-            pretrained: False
-            weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_9900.pth
+            pretrained: True
+            weight: /home/server/linyicheng/py_proj/MLPoint/weight/last_2000.pth
 #            weight: /home/server/linyicheng/py_proj/MLPoint/weight/superpoint_v1.pth
             loss:
                 projection_loss_weight: 1.0

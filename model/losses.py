@@ -84,12 +84,14 @@ def match_loss(desc0, desc1, all_matches):
 
 
 def new_match_loss(xys, matches_gt, score):
+    if len(matches_gt[2]) == 0:
+        return torch.tensor(0.)
     xys_valid = xys[matches_gt[2], :]
     xys_invalid = xys[matches_gt[3], :]
     score_valid = score[matches_gt[2], :]
     score_invalid = score[matches_gt[3], :]
-    dist = torch.norm(xys_valid[:, 0:2] - matches_gt[1], dim=1) * 10
-    loss = torch.mean(dist * score_valid)
+    dist = torch.norm(xys_valid[:, 0:2] - matches_gt[1], dim=1)
+    loss = torch.max(dist * score_valid[:, 0])
     return loss
 
 

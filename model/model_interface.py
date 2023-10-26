@@ -121,10 +121,19 @@ class MInterface(pl.LightningModule):
         # 3.3 dense match loss
         xys_01 = utils.predict_positions(desc_map_20, desc_map_21)
         xys_10 = utils.predict_positions(desc_map_21, desc_map_20)
-        score_0 = F.avg_pool2d(scores_map_0.detach(), 64, 64).view(-1, 1)
-        score_1 = F.avg_pool2d(scores_map_1.detach(), 64, 64).view(-1, 1)
-        loss_match_01 = new_match_loss(xys_01, dense_matches_01, score_0)
-        loss_match_10 = new_match_loss(xys_10, dense_matches_10, score_1)
+        score_0 = F.normalize(F.avg_pool2d(scores_map_0.detach(), 64, stride=64).view(-1, 1), dim=0) * 64
+        score_1 = F.normalize(F.avg_pool2d(scores_map_1.detach(), 64, stride=64).view(-1, 1), dim=0) * 64
+
+        loss_match_01 = local_loss(desc_20.squeeze(2).transpose(1, 2),
+                                   desc_20_out.squeeze(2).transpose(1, 2),
+                                   desc_map_21, kps01_valid.unsqueeze(0), win_size=64)
+
+        #  new_match_loss(xys_01, dense_matches_01, score_0)
+        loss_match_10 = local_loss(desc_21.squeeze(2).transpose(1, 2),
+                                   desc_21_out.squeeze(2).transpose(1, 2),
+                                   desc_map_20, kps10_valid.unsqueeze(0), win_size=64)
+
+        # new_match_loss(xys_10, dense_matches_10, score_1)
 
         # 3.4 total loss
         proj_weight = 1  # self.params['loss']['projection_loss_weight']
@@ -232,7 +241,8 @@ class MInterface(pl.LightningModule):
             # match image
             # show_4 = utils.plot_matches(show_0, show_1)
             # show_10 = utils.plot_gt_matches(show_0, show_1, self.losses['dense_matches_01'])
-
+            matches = utils.dense_match(self.losses['desc_map_20'], self.losses['desc_map_21'])
+            show_nn_matches = utils.plot_nn_matches(show_0, show_1, matches)
             show_dense_matches = utils.plot_dense_matches(show_0, show_1,
                                                           self.losses['xys_01'],
                                                           self.losses['dense_matches_01'])
@@ -242,6 +252,7 @@ class MInterface(pl.LightningModule):
             self.board.add_dense_matching_map(show_dense_matches, None, self.global_step)
 
             # tmp
+            self.board.get_writer().add_image('tmp/1', show_nn_matches, self.global_step, dataformats="HWC")
             # show_tmp_1 = utils.plot_gt_matches(show_0, show_1, self.losses['dense_matches_01'])
             # show_tmp_2 = utils.plot_gt_matches(show_1, show_0, self.losses['dense_matches_10'])
             # self.board.get_writer().add_image('tmp/1', show_tmp_1, self.global_step, dataformats="HWC")

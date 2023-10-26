@@ -183,12 +183,39 @@ def predict_position(kps, matches, win_size=8):
     return torch.from_numpy(np.array(predict))
 
 
+def mutual_argmax(value, mask=None, as_tuple=True):
+    """
+    Args:
+        value: MxN
+        mask:  MxN
+
+    Returns:
+
+    """
+    value = value - value.min()  # convert to non-negative tensor
+    if mask is not None:
+        value = value * mask
+
+    max0 = value.max(dim=1, keepdim=True)  # the col index the max value in each row
+    max1 = value.max(dim=0, keepdim=True)
+
+    valid_max0 = value == max0[0]
+    valid_max1 = value == max1[0]
+
+    mutual = valid_max0 * valid_max1
+    if mask is not None:
+        mutual = mutual * mask
+
+    return mutual.nonzero(as_tuple=as_tuple)
+
+
 def dense_match(desc_map_0: torch.tensor, desc_map_1: torch.tensor) -> torch.tensor:
     """
     :param desc_map_0: [1, C, H/64, W/64] dense descriptor map of image 0
     :param desc_map_1: [1, C, H/64, W/64] dense descriptor map of image 1
     :return: [2, H/64, W/64] dense matches map [0->1, 1->0]
     """
+
     B, D, H, W = desc_map_0.shape
     desc0 = desc_map_0.view(1, D, -1)
     desc1 = desc_map_1.view(1, D, -1)

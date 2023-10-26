@@ -33,6 +33,50 @@ def plot_keypoints(image: torch.tensor, kpts: torch.tensor,
     return out
 
 
+def plot_nn_matches(img0, img1, matches):
+    img0 = img0.cpu().detach().numpy() if isinstance(img0, torch.Tensor) else img0
+    img1 = img1.cpu().detach().numpy() if isinstance(img1, torch.Tensor) else img1
+    H, W = img0.shape[0:2]
+
+    w, h = W / 64, H / 64
+    pts_x = torch.range(1 / w / 2, 1 - 1 / w / 2, 1 / w)
+    pts_y = torch.range(1 / h / 2, 1 - 1 / h / 2, 1 / h)
+    pts = torch.stack(torch.meshgrid(pts_y, pts_x), dim=-1).reshape(-1, 2)[..., [1, 0]]
+
+    if img0.dtype is not np.dtype('uint8'):
+        img0 = img0 * 255
+        img0 = img0.astype(np.uint8)
+    if img1.dtype is not np.dtype('uint8'):
+        img1 = img1 * 255
+        img1 = img1.astype(np.uint8)
+
+    show = np.concatenate([img0, img1], axis=1).copy()  # convert to uint8
+    if len(show.shape) == 2 or show.shape[2] == 1:
+        show = cv2.cvtColor(show, cv2.COLOR_GRAY2RGB)
+
+    matches01 = matches[0].view(-1)
+    matches10 = matches[1].view(-1)
+
+    for i in range(len(matches01)):
+        if matches01[i] > 0:
+            m_id = matches01[i]
+            x0 = int(pts[i, 0] * W)
+            y0 = int(pts[i, 1] * H)
+            x1 = int(pts[m_id, 0] * W) + W
+            y1 = int(pts[m_id, 1] * H)
+            cv2.line(show, (x0, y0), (x1, y1), (0, 255, 0), 1)
+
+    # for i in range(len(matches10)):
+    #     if matches10[i] is not -1:
+    #         m_id = matches10[i]
+    #         x0 = int(pts[i, 0] * W) + W
+    #         y0 = int(pts[i, 1] * H)
+    #         x1 = int(pts[m_id, 0] * W)
+    #         y1 = int(pts[m_id, 1] * H)
+    #         cv2.line(show, (x0, y0), (x1, y1), (0, 0, 255), 1)
+    return show
+
+
 def plot_dense_matches(img0, img1,
                        xys, matches_gt) -> np.ndarray:
     """ visualize dense matches

@@ -113,7 +113,7 @@ def predict_positions(desc0: torch.Tensor, desc1: torch.Tensor) -> torch.Tensor:
 
     # normalize score_map
     max_v = score_map.max(dim=2).values.detach()
-    x_exp = torch.exp((score_map - max_v[:, :, None]) / 0.02)[0, :, :-1]
+    x_exp = torch.exp((score_map - max_v[:, :, None]) / 0.01)[0, :, :-1]
 
     # predict x, y
     xy_residual = x_exp @ hw_grid / x_exp.sum(dim=1)[:, None]
