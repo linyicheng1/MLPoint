@@ -150,8 +150,16 @@ def plot_matches(img0: torch.tensor, img1: torch.tensor,
     pt1 = np.round(pt1).astype(int)
     pt2 = np.round(pt2).astype(int)
     pt2 = pt2 + np.array([img0.shape[1], 0])
-    show = np.concatenate([img0.numpy(), img1.numpy()], axis=1)
-    show = (show * 255).astype(np.uint8)  # convert to uint8
+    img0 = img0.cpu().detach().numpy() if isinstance(img0, torch.Tensor) else img0
+    img1 = img1.cpu().detach().numpy() if isinstance(img1, torch.Tensor) else img1
+    if img0.dtype is not np.dtype('uint8'):
+        img0 = img0 * 255
+        img0 = img0.astype(np.uint8)
+    if img1.dtype is not np.dtype('uint8'):
+        img1 = img1 * 255
+        img1 = img1.astype(np.uint8)
+    show = np.concatenate([img0, img1], axis=1)
+
     if len(show.shape) == 2 or show.shape[2] == 1:
         show = cv2.cvtColor(show, cv2.COLOR_GRAY2RGB)
     for pt in pt1:
@@ -169,19 +177,40 @@ def plot_matches(img0: torch.tensor, img1: torch.tensor,
 
 def plot_op_matches(img0: torch.tensor, img1: torch.tensor,
                     pt1: torch.tensor, pt2: torch.tensor,
+                    correct=None,
                     color=(0, 255, 0), thickness: int = 1) -> np.ndarray:
     """ visualize matches
     :param img0: [H, W, 3] in range [0, 1]
     :param img1: [H, W, 3] in range [0, 1]
     :param pt1: [N, 2] in range [0, 1]
     :param pt2: [N, 2] in range [0, 1]
+    :param correct:
     :param color: color of the line
     :param thickness: thickness of the line
     """
-    show = np.concatenate([img0.numpy(), img1.numpy()], axis=1)
-    show = (show * 255).astype(np.uint8)  # convert to uint8
+    pt1 = pt1.cpu().detach().numpy() if isinstance(pt1, torch.Tensor) else pt1
+    pt2 = pt2.cpu().detach().numpy() if isinstance(pt2, torch.Tensor) else pt2
+    pt1 = pt1 * np.array([img0.shape[1], img0.shape[0]])
+    pt2 = pt2 * np.array([img1.shape[1], img1.shape[0]])
+    pt1 = np.round(pt1).astype(int)
+    pt2 = np.round(pt2).astype(int)
     pt2 = pt2 + np.array([img0.shape[1], 0])
+
+    img0 = img0.cpu().detach().numpy() if isinstance(img0, torch.Tensor) else img0
+    img1 = img1.cpu().detach().numpy() if isinstance(img1, torch.Tensor) else img1
+    if img0.dtype is not np.dtype('uint8'):
+        img0 = img0 * 255
+        img0 = img0.astype(np.uint8)
+    if img1.dtype is not np.dtype('uint8'):
+        img1 = img1 * 255
+        img1 = img1.astype(np.uint8)
+    show = np.concatenate([img0, img1], axis=1).copy()
+
     for i in range(len(pt1)):
+        if correct is not None and bool(correct[i]):
+            color = (0, 255, 0)
+        else:
+            color = (0, 0, 255)
         cv2.line(show, (int(pt1[i][0]), int(pt1[i][1])), (int(pt2[i][0]), int(pt2[i][1])), color, thickness)
     return show
 

@@ -185,9 +185,9 @@ def warp_dense(h: int, w: int, params: dict):
 def warp(kpts0, params: dict):
     mode = params['mode']
     if mode == 'homo':
-        return warp_homography(kpts0[:, :-1], params)
+        return warp_homography(kpts0[:, 0:2], params)
     elif mode == 'se3':
-        return warp_se3(kpts0[:, :-1], params)
+        return warp_se3(kpts0[:, 0:2], params)
     else:
         raise ValueError('unknown mode!')
 

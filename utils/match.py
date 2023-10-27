@@ -37,7 +37,7 @@ def compute_dist(desc_0, desc_1, dist_type="dot"):
 def match_descriptors(
     distances,
     max_distance=.2,
-    cross_check=True,
+    cross_check=False,
     max_ratio=0.9,
 ):
     """ Performs matching of descriptors based on mutual NN distance ratio.
@@ -171,8 +171,8 @@ def predict_position(kps, matches, win_size=8):
     position_map_x = ((matches % matches.shape[1]).to(torch.int32)).to(torch.float32)
     position_map_y = ((matches / matches.shape[1]).to(torch.int32)).to(torch.float32)
 
-    grid_x = torch.arange(0, matches.shape[0], 1)
-    grid_y = torch.arange(0, matches.shape[1], 1)
+    grid_x = torch.arange(0, matches.shape[0], 1).to(matches.device)
+    grid_y = torch.arange(0, matches.shape[1], 1).to(matches.device)
     grid_y, grid_x = torch.meshgrid(grid_x, grid_y)
 
     position_map_x[matches < 0] = grid_x[matches < 0].to(torch.float32)
@@ -230,10 +230,10 @@ def dense_match(desc_map_0: torch.tensor, desc_map_1: torch.tensor) -> torch.ten
     zero = scores.new_tensor(0)
     mscores0 = torch.where(mutual0, max0.values.exp(), zero)
     mscores1 = torch.where(mutual1, mscores0.gather(1, indices1), zero)
-    valid0 = mutual0 & (mscores0 > 0.2)
+    valid0 = mutual0 & (mscores0 > 0.0)
     valid1 = mutual1 & valid0.gather(1, indices1)
-    indices0 = torch.where(valid0, indices0, indices0.new_tensor(-1))
-    indices1 = torch.where(valid1, indices1, indices1.new_tensor(-1))
+    # indices0 = torch.where(valid0, indices0, indices0.new_tensor(-1))
+    # indices1 = torch.where(valid1, indices1, indices1.new_tensor(-1))
     return torch.stack([indices0.view(H, W), indices1.view(H, W)], dim=0)
 
 
@@ -249,8 +249,8 @@ def prior_match(
     desc_1 = desc_1.squeeze(0).permute(1, 2, 0).squeeze(0)
 
     # return mutual_nearest_neighbor(desc_0, desc_1)
-    pos_01 = predict_position(kps_0, matches[0])
-    pos_10 = predict_position(kps_1, matches[1])
+    pos_01 = predict_position(kps_0.cpu(), matches[0].cpu()).to(kps_0.device)
+    pos_10 = predict_position(kps_1.cpu(), matches[1].cpu()).to(kps_0.device)
     desc_0 = torch.cat([desc_0, pos_01 * 0.5], dim=1).to(torch.float32)
     desc_1 = torch.cat([desc_1, kps_1[:, :-1] * 0.5], dim=1).to(torch.float32)
     dist = compute_dist(desc_0, desc_1)
@@ -267,4 +267,31 @@ def optical_flow_match(
         desc_map_0: torch.tensor, desc_map_1: torch.tensor,
         kps_0: torch.tensor, kps_1: torch.tensor,
         matches: torch.tensor, win_size: int = 8):
+    return torch.zeros(0)
     pass
+
+
+def ml_match(
+    desc_map_00: torch.tensor, desc_map_01: torch.tensor,
+    desc_map_10: torch.tensor, desc_map_11: torch.tensor,
+    desc_map_20: torch.tensor, desc_map_21: torch.tensor,
+    kps_0: torch.tensor, kps_1: torch.tensor
+):
+    """
+    :param desc_map_00: [C1, H/64, W/64]
+    :param desc_map_01: [C1, H/64, W/64]
+    :param desc_map_10: [C2, H/8, W/8]
+    :param desc_map_11: [C2, H/8, W/8]
+    :param desc_map_20: [C3, H, W]
+    :param desc_map_21: [C3, H, W]
+    :param kps_0: [M, 2]
+    :param kps_1: [N, 2]
+    :return: [K, 2]
+    """
+    matches0 = dense_match(desc_map_20, desc_map_21)
+    matches1 = prior_match(desc_map_10, desc_map_11, kps_0, kps_1, matches0)
+    # matches2 = optical_flow_match(desc_map_00, desc_map_01, kps_0, kps_1, matches1)
+    return matches0, matches1, None
+
+
+

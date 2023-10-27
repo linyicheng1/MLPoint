@@ -121,19 +121,19 @@ class MInterface(pl.LightningModule):
         # 3.3 dense match loss
         xys_01 = utils.predict_positions(desc_map_20, desc_map_21)
         xys_10 = utils.predict_positions(desc_map_21, desc_map_20)
-        score_0 = F.normalize(F.avg_pool2d(scores_map_0.detach(), 64, stride=64).view(-1, 1), dim=0) * 64
+        score_0 = torch.ones(64, 1).to(xys_01.device)  # F.normalize(F.avg_pool2d(scores_map_0.detach(), 64, stride=64).view(-1, 1), dim=0) * 64
         score_1 = F.normalize(F.avg_pool2d(scores_map_1.detach(), 64, stride=64).view(-1, 1), dim=0) * 64
 
-        loss_match_01 = local_loss(desc_20.squeeze(2).transpose(1, 2),
-                                   desc_20_out.squeeze(2).transpose(1, 2),
-                                   desc_map_21, kps01_valid.unsqueeze(0), win_size=64)
+        # loss_match_01 = local_loss(desc_20.squeeze(2).transpose(1, 2),
+        #                            desc_20_out.squeeze(2).transpose(1, 2),
+        #                            desc_map_21, kps01_valid.unsqueeze(0), win_size=64)
 
-        #  new_match_loss(xys_01, dense_matches_01, score_0)
-        loss_match_10 = local_loss(desc_21.squeeze(2).transpose(1, 2),
-                                   desc_21_out.squeeze(2).transpose(1, 2),
-                                   desc_map_20, kps10_valid.unsqueeze(0), win_size=64)
+        loss_match_01 = new_match_loss(xys_01, dense_matches_01, score_0)
+        # loss_match_10 = local_loss(desc_21.squeeze(2).transpose(1, 2),
+        #                            desc_21_out.squeeze(2).transpose(1, 2),
+        #                            desc_map_20, kps10_valid.unsqueeze(0), win_size=64)
 
-        # new_match_loss(xys_10, dense_matches_10, score_1)
+        loss_match_10 = new_match_loss(xys_10, dense_matches_10, score_0)
 
         # 3.4 total loss
         proj_weight = 1  # self.params['loss']['projection_loss_weight']
@@ -169,8 +169,8 @@ class MInterface(pl.LightningModule):
             'dense_matches_10': dense_matches_10,
         }
 
-        return match_weight * (loss_match_01 + loss_match_10) + proj_weight * (loss_kps_0 + loss_kps_1)  # + \
-               # cons_weight * (loss_desc_00 + loss_desc_01 + loss_desc_10 + loss_desc_11) + \
+        return match_weight * (loss_match_01 + loss_match_10) + proj_weight * (loss_kps_0 + loss_kps_1) + \
+               cons_weight * (loss_desc_00 + loss_desc_01 + loss_desc_10 + loss_desc_11)
                # match_weight * (loss_match_01 + loss_match_10)
 
     def step(self, batch: Tensor) -> Tensor:
@@ -382,8 +382,20 @@ class MInterface(pl.LightningModule):
                                 max_pts=top_k)
         kps_1 = utils.detection(result1[0].detach().to(batch['image0'].device), nms_dist=nms_dist, threshold=min_score,
                                 max_pts=top_k)
+        # images
+        show_0 = (batch['image0'][0].cpu().permute(1, 2, 0).numpy() * 255).astype('uint8')
+        show_1 = (batch['image1'][0].cpu().permute(1, 2, 0).numpy() * 255).astype('uint8')
 
         val_pts = utils.val_key_points(kps_0, kps_1, warp01_params, warp10_params, th=threshold)
+        val_match = utils.val_matches(show_0, show_1,
+                                      result0[1].detach().to(batch['image0'].device),
+                                      result1[1].detach().to(batch['image0'].device),
+                                      result0[2].detach().to(batch['image0'].device),
+                                      result1[2].detach().to(batch['image0'].device),
+                                      result0[3].detach().to(batch['image0'].device),
+                                      result1[3].detach().to(batch['image0'].device),
+                                      kps_0, kps_1, warp01_params, warp10_params, th=threshold)
+
         if val_pts['num_feat'] > 0:
             self.num_feat.append(val_pts['num_feat'])
             self.repeatability.append(val_pts['repeatability'])
